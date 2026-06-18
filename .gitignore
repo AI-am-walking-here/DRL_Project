@@ -17,6 +17,9 @@ robot-routes/*.h5
 robot-routes/.hf-cache/
 robot-routes/.pip-cache/
 
+# Accidental nested repos (e.g. from GitHub Desktop publish)
+DRL-2026-Final/
+
 # OS / editor
 .DS_Store
 *.swp
