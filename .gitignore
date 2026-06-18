@@ -1,0 +1,23 @@
+# Python / ML artifacts (robot-routes)
+robot-routes/.venv/
+robot-routes/runs/
+robot-routes/__pycache__/
+robot-routes/*.py[cod]
+robot-routes/.pytest_cache/
+robot-routes/.mypy_cache/
+robot-routes/.ruff_cache/
+robot-routes/*.egg-info/
+robot-routes/.pipeline_progress.json
+robot-routes/pipeline_status.txt
+robot-routes/heartbeat
+robot-routes/stage_live.json
+robot-routes/data/scenes/.generation_status.json
+robot-routes/*.pt
+robot-routes/*.h5
+robot-routes/.hf-cache/
+robot-routes/.pip-cache/
+
+# OS / editor
+.DS_Store
+*.swp
+*~
