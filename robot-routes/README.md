@@ -46,11 +46,11 @@ make pipeline PROFILE=smoke SEED=0 CONDITION=full
 
 ## Sharing with a collaborator
 
-Repo: **https://github.com/AI-am-walking-here/2026-DRL-Final**
+Repo: **https://github.com/AI-am-walking-here/DRL_Project**
 
 ```bash
-git clone https://github.com/AI-am-walking-here/2026-DRL-Final.git
-cd 2026-DRL-Final/robot-routes
+git clone https://github.com/AI-am-walking-here/DRL_Project.git
+cd DRL_Project
 uv sync && source .venv/bin/activate
 make setup PROFILE=smoke    # scenes + calibrate for smoke
 make smoke
