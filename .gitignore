@@ -1,26 +1,53 @@
-# Python / ML artifacts (robot-routes)
-robot-routes/.venv/
-robot-routes/runs/
-robot-routes/__pycache__/
-robot-routes/*.py[cod]
-robot-routes/.pytest_cache/
-robot-routes/.mypy_cache/
-robot-routes/.ruff_cache/
-robot-routes/*.egg-info/
-robot-routes/.pipeline_progress.json
-robot-routes/pipeline_status.txt
-robot-routes/heartbeat
-robot-routes/stage_live.json
-robot-routes/data/scenes/.generation_status.json
-robot-routes/*.pt
-robot-routes/*.h5
-robot-routes/.hf-cache/
-robot-routes/.pip-cache/
-
-# Accidental nested repos (e.g. from GitHub Desktop publish)
-DRL-2026-Final/
-
-# OS / editor
+# --- Repository root ---
 .DS_Store
+Thumbs.db
 *.swp
 *~
+
+# Editors / local IDE state
+.idea/
+.vscode/
+*.code-workspace
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# Accidental nested repos (e.g. GitHub Desktop publish)
+DRL-2026-Final/
+
+# --- robot-routes: Python environment ---
+robot-routes/.venv/
+robot-routes/**/__pycache__/
+robot-routes/**/*.py[cod]
+robot-routes/**/.pytest_cache/
+robot-routes/**/.mypy_cache/
+robot-routes/**/.ruff_cache/
+robot-routes/**/*.egg-info/
+robot-routes/dist/
+robot-routes/build/
+robot-routes/.coverage
+robot-routes/htmlcov/
+
+# --- robot-routes: ML / data caches ---
+robot-routes/**/*.pt
+robot-routes/**/*.pth
+robot-routes/**/*.ckpt
+robot-routes/**/*.h5
+robot-routes/**/*.pkl
+robot-routes/.hf-cache/
+robot-routes/.pip-cache/
+robot-routes/wandb/
+
+# --- robot-routes: Pipeline runtime (all under runs/ + stray markers) ---
+robot-routes/runs/
+robot-routes/**/.pipeline_progress.json
+robot-routes/**/.plan_progress.json
+robot-routes/**/pipeline_status.txt
+robot-routes/**/plan_status.txt
+robot-routes/**/heartbeat
+robot-routes/**/stage_live.json
+robot-routes/**/*.pid
+robot-routes/**/*.stamp
+robot-routes/data/scenes/.generation_status.json
