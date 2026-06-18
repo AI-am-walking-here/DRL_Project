@@ -1,0 +1,12 @@
+step_size: 0.15
+goal_bias: 0.1
+max_iters: 20000
+t_validate_s: 13.0
+t_label_s: 5.0
+margin_plan_m: 0.03
+edge_check_rad: 0.03
+ik_restarts: 16
+ik_dedup_rad: 0.2
+shortcut_iters: 100
+waypoint_rad: 0.04
+lookahead: 3

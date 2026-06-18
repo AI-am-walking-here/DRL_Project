@@ -1,0 +1,15 @@
+val_per_level: 100
+test_per_level: 200
+routes_scenes: 50
+bootstrap_n: 10000
+seeds: [0, 1, 2]
+mde_pts: 10
+unseen_half_min: 0.08
+unseen_half_max: 0.14
+unseen_reject_max: 0.5
+diversity:
+  resample_pts: 64
+  n_rollouts: 20
+  validity_min: 8
+  rollout_seeds: "0..19"
+  recovery_merge_steps: 10

@@ -1,0 +1,5 @@
+- id: wp6.1
+  title: curriculum controller + synthetic_obs densification
+  spec: ["7"]
+  done_when: "python3 scripts/04_run_curriculum.py --help"
+  budget_minutes: 90

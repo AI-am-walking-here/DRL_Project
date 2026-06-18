@@ -1,0 +1,10 @@
+- id: wp4.1
+  title: HDF5 schema + buffer + MDN/Gaussian/IMLE policies
+  spec: ["5", "15.6", "15.7.5"]
+  done_when: "pytest tests/test_policy.py -q || pytest tests/test_contracts.py -q"
+  budget_minutes: 120
+- id: wp4.2
+  title: BC collection + training scripts
+  spec: ["5.1", "5.3"]
+  done_when: "python3 scripts/02_train_bc.py --help"
+  budget_minutes: 90

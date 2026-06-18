@@ -1,0 +1,7 @@
+# Baseline full-grid profile overrides (merged into PROFILE=full runs).
+n_demos: 2000
+bc_epochs: 200
+dagger_rounds: 6
+dagger_budget: 40000
+dagger_epochs: 100
+ppo_steps: 1000000

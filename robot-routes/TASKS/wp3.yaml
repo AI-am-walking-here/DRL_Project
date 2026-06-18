@@ -1,0 +1,10 @@
+- id: wp3.1
+  title: collision.py + rrt_connect.py
+  spec: ["4.1", "15.7.3"]
+  done_when: "pytest tests/test_expert.py -q"
+  budget_minutes: 120
+- id: wp3.2
+  title: ExpertOracle plan/label/ee_path
+  spec: ["4.2", "15.7.4"]
+  done_when: "pytest tests/test_expert.py -q"
+  budget_minutes: 90

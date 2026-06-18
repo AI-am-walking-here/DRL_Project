@@ -1,0 +1,29 @@
+1. contracts.py is law. Never change a signature there without an ISSUES.md entry;
+   all other modules import from it, never redefine shared types.
+2. No numeric literal outside configs/, tests/, or contracts defaults.
+   `make check-constants` enforces this; do not allowlist around it.
+3. Never modify: frozen scene JSONs, calibration/delta.json, anything under
+   eval test-tier paths, Appendix B golden values, .cursor/rules itself.
+4. Test-first: for each task, write the test from its spec sections' acceptance
+   criteria BEFORE the implementation. If the spec's criterion is ambiguous,
+   that is a BLOCKED entry, not an interpretation.
+5. Inner loop: make lint && make type && targeted pytest. Full `make check`
+   before marking any task done. Never mark done on a red command.
+6. One task = one commit, message "wpN.M: <title> (spec §X.Y)". CI green
+   before starting the next task.
+7. When stuck past budget_minutes: append a BLOCKED.md entry (format §14.7),
+   pick the next task with satisfied depends. Never hack around a blocker;
+   never weaken a test to pass it.
+8. Determinism rules of §11 apply to test code too: seeded Generators only.
+9. Long-running anything (training, collection) uses PROFILE=smoke in your
+   sessions. You never launch full-scale runs; humans do (§11.7.5).
+10. If implementation reveals the spec is wrong: ISSUES.md entry with the
+    section, the contradiction, and a proposed amendment. Do not silently fix.
+11. External calls: §15.3 ledger or it does not exist. New call ⇒ assumptions
+    test first, ledger via ISSUES.md second, usage third.
+12. §15.5 reference implementations are copied verbatim as the starting point;
+    extensions wrap them, never re-derive them.
+13. If §15 code and body prose conflict, STOP: ISSUES.md entry. Neither wins
+    by default — a contradiction means one of them is wrong.
+14. uv.lock is immutable to agents. Dependency changes are human acts via
+    ISSUES.md (§15.1).

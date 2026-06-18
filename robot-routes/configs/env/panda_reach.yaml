@@ -1,0 +1,39 @@
+ctrl_hz: 20
+n_substeps: 25
+horizon: 300
+action_clip: 0.05
+success_tol_m: 0.05
+success_hold_steps: 5
+jlimit_margin_rad: 0.02
+max_obstacles: 8
+obs_dim: 79
+dt: 0.002
+contact_exclusions:
+  - ["link0", "table"]
+scene:
+  r_min: 0.25
+  r_max: 0.75
+  z_min: 0.05
+  z_max: 0.7
+  box_half_min: 0.03
+  box_half_max: 0.10
+  sph_r_min: 0.04
+  sph_r_max: 0.10
+  goal_min_dist: 0.35
+  start_noise_rad: 0.05
+curriculum:
+  levels: [[2, 3], [3, 4], [4, 6], [6, 8]]
+seed_ranges:
+  train: [0, 999999]
+  val_L0: [1000000, 1000099]
+  val_L1: [1000100, 1000199]
+  val_L2: [1000200, 1000299]
+  val_L3: [1000300, 1000399]
+  val_unseen: [1000400, 1000499]
+  test_L0: [2000000, 2000199]
+  test_L1: [2000200, 2000399]
+  test_L2: [2000400, 2000599]
+  test_L3: [2000600, 2000799]
+  test_unseen: [2000800, 2000999]
+  test_v2: [3000000, 3000999]
+  test_v3: [4000000, 4000999]

@@ -1,0 +1,15 @@
+{
+  "ts": "2026-06-13T16:20:02.237292+00:00",
+  "job": "calibrate_delta",
+  "phase": "homotopy_pairs",
+  "desc": "G-CAL: planner homotopy pairs",
+  "current": 40,
+  "total": 40,
+  "unit": "pair",
+  "pct": 100.0,
+  "elapsed_s": 2463.8,
+  "done": true,
+  "same_n": 20,
+  "cross_n": 20,
+  "attempts": 21
+}

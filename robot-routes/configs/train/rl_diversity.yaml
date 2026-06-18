@@ -1,0 +1,13 @@
+clip: 0.2
+gae_lambda: 0.95
+gamma: 0.99
+lr: 1.0e-4
+n_envs: 8
+kl_anchor: 0.5
+entropy_coef: 0.005
+pool_scenes: 256
+archive_m: 16
+beta: 2.0
+rdiv_cap: 0.5
+beta_halvings_max: 3
+total_steps: 1000000

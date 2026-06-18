@@ -1,0 +1,18 @@
+n_demos: 2000
+lr: 3.0e-4
+batch: 1024
+epochs: 200
+grad_clip: 1.0
+val_frac: 0.05
+gate_soft: 0.25
+gate_target: 0.40
+policy:
+  trunk: [512, 512, 256]
+  k_mix: 5
+  logstd_clamp: [-4, 0]
+  entropy_bonus: 1.0e-3
+  entropy_bonus_epochs: 20
+  sigma_c: 0.02
+  dither_escalate_median: 10
+  chunk_k: 4
+  head: mdn

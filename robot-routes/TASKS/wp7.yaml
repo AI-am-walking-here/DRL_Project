@@ -1,0 +1,10 @@
+- id: wp7.1
+  title: route_metrics + evaluate.py + plots
+  spec: ["9", "10"]
+  done_when: "pytest tests/test_diversity_metrics.py -q"
+  budget_minutes: 120
+- id: wp7.2
+  title: grid launcher + hypotheses_verdicts
+  spec: ["10.5", "11.7.4"]
+  done_when: "python3 scripts/07_launch_grid.py --help || python3 scripts/07_launch_grid.py"
+  budget_minutes: 90

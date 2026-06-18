@@ -1,0 +1,17 @@
+.venv/
+runs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.pipeline_progress.json
+pipeline_status.txt
+heartbeat
+stage_live.json
+data/scenes/.generation_status.json
+*.pt
+*.h5
+.hf-cache/
+.pip-cache/

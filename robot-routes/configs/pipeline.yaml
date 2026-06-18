@@ -1,0 +1,50 @@
+ppo_deadline: "2026-12-31T23:59:59Z"
+profile:
+  smoke:
+    n_demos: 50
+    dagger_rounds: 2
+    dagger_budget: 2000
+    bc_epochs: 5
+    dagger_epochs: 5
+    ppo_steps: 5000
+    eval_scenes: 20
+  # ~3–5 h: core learning path + gates; run before leaving machine unattended.
+  medium:
+    n_demos: 500
+    dagger_rounds: 3
+    dagger_budget: 12000
+    bc_epochs: 40
+    dagger_epochs: 40
+    ppo_steps: 25000
+    eval_scenes: 30
+    routes_scenes: 10
+    preflight: true
+    skip_prereg: true
+  # ~14–18 h: near-full single condition; validates resume + overnight stability.
+  day:
+    n_demos: 2000
+    dagger_rounds: 5
+    dagger_budget: 35000
+    bc_epochs: 150
+    dagger_epochs: 80
+    ppo_steps: 500000
+    eval_scenes: 80
+    routes_scenes: 30
+    preflight: true
+    skip_prereg: true
+    ppo_standalone: true
+    ppo_force: true
+watchdog_min: 30
+# Per-stage silence limits (minutes) before orchestrator self-aborts. Subprocess
+# stages are NOT killed while the child is still running; these apply only to
+# true hangs (no heartbeat, no stage_live.json, child exited unexpectedly).
+stage_watchdog_min:
+  calibrate_delta: 90
+  collect_bc: 240
+  train_bc: 120
+  dagger_rac: 960
+  curriculum: 360
+  evaluate_val: 120
+  evaluate_test: 120
+  ppo: 180
+disk_min_gb: 50

@@ -1,0 +1,10 @@
+- id: wp5.1
+  title: dagger_rac collect_round + run_rac_intervention
+  spec: ["6", "15.7.7"]
+  done_when: "pytest tests/test_rewind.py -q"
+  budget_minutes: 180
+- id: wp5.2
+  title: run_pipeline skeleton + PROFILE=smoke Makefile chain
+  spec: ["11.7", "11.5"]
+  done_when: "make pipeline PROFILE=smoke SEED=0 CONDITION=bc"
+  budget_minutes: 120

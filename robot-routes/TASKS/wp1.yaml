@@ -1,0 +1,30 @@
+- id: wp1.1
+  title: Scaffold + pyproject + ruff/mypy strict + CI workflow
+  spec: ["2.2", "2.3"]
+  done_when: "make lint && make type"
+  budget_minutes: 40
+- id: wp1.2
+  title: contracts.py — SceneSpec, MjSimState, JointPath, Transition, Protocols
+  spec: ["3.3", "4.2", "5.1", "15.2"]
+  done_when: "pytest tests/test_contracts.py -q"
+  budget_minutes: 60
+- id: wp1.3
+  title: mj_state.py save/restore mjSTATE_INTEGRATION
+  spec: ["3.3", "15.3"]
+  done_when: "pytest tests/test_env.py -k roundtrip -q"
+  budget_minutes: 45
+- id: wp1.4
+  title: Panda asset vendoring + headless render fallback
+  spec: ["3.1", "11.7.4"]
+  done_when: "python scripts/00_smoke.py --render"
+  budget_minutes: 45
+- id: wp1.5
+  title: gpu_alloc.py + mocked-NVML tests
+  spec: ["10.5.2", "10.5.6"]
+  done_when: "pytest tests/test_gpu_alloc.py -q"
+  budget_minutes: 90
+- id: wp1.6
+  title: check_constants.py + Appendix B golden config test
+  spec: ["14.5", "Appendix B"]
+  done_when: "make check-spec"
+  budget_minutes: 45

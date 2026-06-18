@@ -1,0 +1,6 @@
+n_demos: 2000
+bc_epochs: 200
+dagger_rounds: 6
+dagger_budget: 30000
+dagger_epochs: 85
+ppo_steps: 350000

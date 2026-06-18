@@ -1,0 +1,6 @@
+levels: [[2, 3], [3, 4], [4, 6], [6, 8]]
+promote: 0.70
+demote: 0.30
+offlevel_cap: 0.5
+synth_frac: 0.2
+synthetic_obs: true

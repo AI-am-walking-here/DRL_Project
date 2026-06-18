@@ -1,0 +1,10 @@
+- id: wp2.1
+  title: scene_gen.py + SceneSpec validation
+  spec: ["3.1", "15.7.1"]
+  done_when: "pytest tests/test_env.py -k spawn -q"
+  budget_minutes: 60
+- id: wp2.2
+  title: PandaReachEnv full MDP
+  spec: ["3.2", "15.7.2"]
+  done_when: "pytest tests/test_env.py -q"
+  budget_minutes: 90

@@ -1,0 +1,28 @@
+conditions:
+  - name: bc
+    stages: [collect_bc, train_bc, evaluate_val]
+    rac_enabled: false
+  - name: bc_dagger
+    stages: [collect_bc, train_bc, dagger_rac, evaluate_val]
+    rac_enabled: false
+  - name: rac_noreroute
+    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val]
+    reroute_enabled: false
+  - name: full
+    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val, ppo, evaluate_test, verdicts, report_assets]
+    rac_enabled: true
+    reroute_enabled: true
+  - name: curriculum
+    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val]
+    synthetic_obs: true
+  - name: curriculum_no_synth
+    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val]
+    synthetic_obs: false
+  - name: rl_diversity
+    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val, ppo, evaluate_test, verdicts, report_assets]
+    requires: [rac_noreroute.curriculum.eval_val]
+seeds: [0, 1, 2]
+priority: [full, rac_noreroute, curriculum, bc_dagger, bc, curriculum_no_synth, rl_diversity]
+dep_timeout_h: 48
+ppo:
+  requires: [rac_noreroute.curriculum.eval_val]
