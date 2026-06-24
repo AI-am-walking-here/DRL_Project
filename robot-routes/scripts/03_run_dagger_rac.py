@@ -52,8 +52,8 @@ from robot_routes.utils.config import (
     load_config,
     load_yaml,
 )
-from robot_routes.utils.seeding import seed_everything
 from robot_routes.utils.device import COLLECT_DEVICE, resolve_device
+from robot_routes.utils.seeding import seed_everything
 
 
 def collect_round_with_retry(
@@ -358,8 +358,8 @@ def main():
         if val_scenes:
             try:
                 render_round_videos(policy, val_scenes[:4], out / f"videos_r{k}")
-            except Exception:
-                pass
+            except Exception as e:  # videos are non-essential; never fail the round
+                print(f"round {k}: showcase video render skipped ({type(e).__name__}: {e})")
         print(f"round {k+1}/{cfg.rounds} done, val_sr={sr:.3f}, regressed={regressed}")
         merged_base = merged_path
         save_round_stats(out, round_stats)

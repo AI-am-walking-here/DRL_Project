@@ -39,8 +39,8 @@ from robot_routes.utils.config import (
     load_config,
     load_yaml,
 )
-from robot_routes.utils.seeding import seed_everything
 from robot_routes.utils.device import COLLECT_DEVICE, resolve_device
+from robot_routes.utils.seeding import seed_everything
 
 
 def eval_level(root: Path, ckpt: Path, level: int, policy_cfg, eval_cfg, div_cfg, delta, n=20):
@@ -67,6 +67,8 @@ def main():
     p.add_argument("--device", default="auto")
     p.add_argument("--run-dir", default=None)
     p.add_argument("--force-restart", action="store_true")
+    p.add_argument("--retrain-epochs", type=int, default=None)
+    p.add_argument("--step-budget", type=int, default=None)
     args = p.parse_args()
     root = Path(__file__).resolve().parents[1]
     cfg = load_config(root / args.config, CurriculumConfig)
@@ -88,6 +90,12 @@ def main():
     dagger_out = Path(args.dagger_out)
     max_level = len(cfg.levels or [[2, 3]]) - 1
     total_steps = max(1, args.rounds_per_level) * (max_level + 1)
+    retrain_epochs = (
+        5
+        if args.profile == "smoke"
+        else (args.retrain_epochs if args.retrain_epochs is not None else bc_cfg.epochs)
+    )
+    step_budget = args.step_budget if args.step_budget is not None else dagger_cfg.budget
     bc_data = dagger_out.parent / "collect" / "demos.h5"
     resume = detect_curriculum_resume(
         out,
@@ -143,7 +151,7 @@ def main():
         dcfg = dataclasses.replace(
             dagger_cfg,
             rounds=1,
-            budget=min(dagger_cfg.budget, 2000 if args.profile == "smoke" else dagger_cfg.budget),
+            budget=min(step_budget, 2000 if args.profile == "smoke" else step_budget),
         )
         rows = collect_round(
             env,
@@ -169,7 +177,7 @@ def main():
         merged = out / f"merged_cur_{step}.h5"
         policy = train_bc(
             merged,
-            dataclasses.replace(bc_cfg, epochs=5 if args.profile == "smoke" else bc_cfg.epochs),
+            dataclasses.replace(bc_cfg, epochs=retrain_epochs),
             policy_cfg,
             out / f"ckpt_{step}",
             train_device,

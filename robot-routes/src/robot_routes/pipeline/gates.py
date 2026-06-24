@@ -14,6 +14,7 @@ from robot_routes.eval.evaluate import evaluate_checkpoint
 from robot_routes.expert.collision import CollisionChecker
 from robot_routes.utils.config import DiversityConfig, EvalConfig, PolicyConfig
 
+
 # Recovery rows are validated with env-equivalent contact detection (not margin_plan).
 def gate_bc(success_rate: float, soft: float = 0.25, target: float = 0.40) -> tuple[bool, str, str]:
     if success_rate >= soft:

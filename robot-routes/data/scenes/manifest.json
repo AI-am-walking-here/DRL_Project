@@ -132,6 +132,50 @@
           "count": 100
         }
       }
+    },
+    "full": {
+      "files": {
+        "val_L0.json": {
+          "sha256": "73d87bc140f1584eecaabaf158919ecd0023311cb8413cb92f684d68ab921616",
+          "count": 100
+        },
+        "val_L1.json": {
+          "sha256": "0c3de4f1602662bc171f9b9d17ccd196e094daa8daf7b9dde0b87b4231720a17",
+          "count": 100
+        },
+        "val_L2.json": {
+          "sha256": "91c5f8f9ae0a00bd960d2ff82e588048aac3414c8e4c79281dcacaec02d60dbe",
+          "count": 100
+        },
+        "val_L3.json": {
+          "sha256": "0ebe50deb95a7e417321037cde1233f98938e0c22870b7f3b570f4ddddda9e01",
+          "count": 100
+        },
+        "val_unseen.json": {
+          "sha256": "33cb69ea1911f5b90ad6687cb97dbd042b1e2e23705c932d5215c87dde007b77",
+          "count": 100
+        },
+        "test_L0.json": {
+          "sha256": "74f4c95f5330046d11abe7e35e88d9561cff3ee6cdb282d9bc6db1cf942d7f91",
+          "count": 200
+        },
+        "test_L1.json": {
+          "sha256": "889ae14973de82ef61c54f86b48ba65ef5ab27cba696c7600031a1ce5cc35d7e",
+          "count": 200
+        },
+        "test_L2.json": {
+          "sha256": "36297c8ba7f4852ffc263b3798eec5d8a9b486e5060eb32a60d3f754ea50f244",
+          "count": 200
+        },
+        "test_L3.json": {
+          "sha256": "73b3eeb86ba1494e6190b27fa0144e6d7674d96609edf8526ca5ef696a15325e",
+          "count": 200
+        },
+        "test_unseen.json": {
+          "sha256": "525e527883755408e32223892bc825f903faf1ce57c586d0241ae2cc6359659a",
+          "count": 200
+        }
+      }
     }
   }
 }

@@ -15,7 +15,7 @@ Thumbs.db
 !.env.example
 
 # Accidental nested repos (e.g. GitHub Desktop publish)
-DRL-2026-Final/
+DRL_Project/
 
 # --- robot-routes: Python environment ---
 robot-routes/.venv/

@@ -13,6 +13,7 @@ from robot_routes.contracts import Q_HOME, Obstacle, SceneSpec
 from robot_routes.envs.panda_reach_env import PandaReachEnv
 from robot_routes.envs.scene_gen import sample_scene
 from robot_routes.expert.oracle import ExpertOracle
+from robot_routes.expert.rollout import expert_solves_scene
 from robot_routes.utils.config import EnvConfig, ExpertConfig, SceneConfig, load_config
 from robot_routes.utils.progress import ProgressReporter
 
@@ -72,6 +73,7 @@ def verify_scene_sets(root: Path, profile: str = "smoke") -> None:
     files = prof.get("files", {})
     if not files:
         raise RuntimeError(f"scene profile {profile!r} has no files in manifest")
+    for name, meta in files.items():
         path = root / "data" / "scenes" / name
         if not path.exists():
             raise RuntimeError(f"missing scene set: {path}")
@@ -114,9 +116,7 @@ def generate_verified_scene(
         if spec is None:
             continue
         env.reset(options={"scene": spec})
-        q = env.data.qpos[:7].copy()
-        path = expert.plan(q, spec, spec.seed, time_budget_s=expert.cfg.t_validate_s)
-        if path is not None:
+        if expert_solves_scene(env, expert, spec):
             return spec
     return None
 

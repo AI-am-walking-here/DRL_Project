@@ -17,6 +17,7 @@ from robot_routes.data.schema import merge_shards, write_shard
 from robot_routes.envs.panda_reach_env import PandaReachEnv
 from robot_routes.expert.oracle import ExpertOracle
 from robot_routes.expert.oracle import label as expert_label
+from robot_routes.expert.rollout import expert_solves_scene
 from robot_routes.pipeline.artifacts import git_hash
 from robot_routes.pipeline.stage_progress import write_stage_live
 from robot_routes.pipeline.stage_resume import count_demos_h5, detect_collect_resume
@@ -29,8 +30,12 @@ def collect_episode(env, expert, rng, settle_steps=5):
         seed=int(rng.integers(2**31)), options={"level": 0, "level_bounds": [2, 3]}
     )
     scene = env.scene
+    planner_seed = int(rng.integers(2**31))
+    if not expert_solves_scene(env, expert, scene, planner_seed=planner_seed, settle_steps=settle_steps):
+        return None, None
+    obs, info = env.reset(options={"scene": scene})
     path = expert.plan(
-        info["q"], scene, int(rng.integers(2**31)), time_budget_s=expert.cfg.t_validate_s
+        info["q"], scene, planner_seed, time_budget_s=expert.cfg.t_validate_s
     )
     if path is None:
         return None, None

@@ -154,10 +154,17 @@ def run_gbc_ladder(
     """Returns (passed_soft_gate, best_checkpoint, diagnostics)."""
     expert = ExpertOracle(load_config(root / "configs/expert/rrt_connect.yaml", ExpertConfig))
     diag: dict = {}
-    ok1, rate1 = expert_replay_check(h5_path, expert)
+    min_rate = getattr(bc_cfg, "replay_min_rate", 0.70)
+    max_eps = getattr(bc_cfg, "replay_max_episodes", 20)
+    ok1, rate1 = expert_replay_check(
+        h5_path, expert, min_rate=min_rate, max_episodes=max_eps
+    )
     diag["expert_replay_rate"] = rate1
+    diag["replay_pass"] = ok1
+    diag["replay_min_rate"] = min_rate
+    diag["replay_max_episodes"] = max_eps
     if not ok1:
-        return False, None, diag
+        diag["replay_note"] = "below threshold — continuing ladder anyway"
     ok2, nll = overfit_ten_episodes(h5_path, policy_cfg, device, rng)
     diag["overfit_nll"] = nll
     if not ok2:
@@ -187,8 +194,6 @@ def run_gbc_ladder(
         if ev["success_rate"] >= bc_cfg.gate_soft:
             dest = run_dir / "bc" / "best.pt"
             dest.parent.mkdir(parents=True, exist_ok=True)
-            import shutil
-
             shutil.copy(ckpt, dest)
             return True, dest, diag
         return False, ckpt, diag

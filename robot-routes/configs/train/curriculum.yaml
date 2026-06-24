@@ -1,4 +1,4 @@
-levels: [[2, 3], [3, 4], [4, 6], [6, 8]]
+levels: [[2, 3], [3, 4], [4, 6]]
 promote: 0.70
 demote: 0.30
 offlevel_cap: 0.5

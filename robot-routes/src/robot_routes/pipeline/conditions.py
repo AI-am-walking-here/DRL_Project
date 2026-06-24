@@ -11,8 +11,12 @@ import yaml
 from robot_routes.utils.config import CurriculumConfig, DaggerRacConfig, load_config
 
 
-def load_grid(root: Path) -> dict[str, Any]:
-    return yaml.safe_load((root / "configs/grid.yaml").read_text())
+def load_grid(root: Path, config: str | Path = "configs/grid.yaml") -> dict[str, Any]:
+    """Load a grid spec. `config` may be absolute or relative to `root`."""
+    path = Path(config)
+    if not path.is_absolute():
+        path = root / path
+    return yaml.safe_load(path.read_text())
 
 
 def condition_spec(grid: dict[str, Any], name: str) -> dict[str, Any]:

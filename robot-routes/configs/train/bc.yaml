@@ -6,6 +6,9 @@ grad_clip: 1.0
 val_frac: 0.05
 gate_soft: 0.25
 gate_target: 0.40
+# G-BC ladder expert replay: 20 episodes × ~5–10s RRT+rollout ≈ 2–3 min (200 ≈ 30+ min).
+replay_min_rate: 0.70
+replay_max_episodes: 20
 policy:
   trunk: [512, 512, 256]
   k_mix: 5

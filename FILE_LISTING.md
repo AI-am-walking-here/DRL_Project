@@ -7,7 +7,7 @@ Generated from the cluster workspace. Large generated trees are summarized.
 | Path | Role |
 |------|------|
 | `TECHNICAL_SPEC.md` | Project specification |
-| `robot-routes/` | DRL pipeline codebase ([2026-DRL-Final](https://github.com/AI-am-walking-here/2026-DRL-Final)) |
+| `robot-routes/` | DRL pipeline codebase ([DRL_Project](https://github.com/AI-am-walking-here/DRL_Project)) |
 | `.git/` | Repository metadata (root-level; `robot-routes/` is no longer a separate git repo) |
 | `robot-routes/.venv/` | Local Python venv (~4.9 GB, **do not commit**) |
 | `robot-routes/runs/` | Pipeline artifacts (~1.2 GB, **do not commit**) |

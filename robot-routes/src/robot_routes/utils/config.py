@@ -112,6 +112,8 @@ class BCConfig:
     val_frac: float = 0.05
     gate_soft: float = 0.25
     gate_target: float = 0.40
+    replay_min_rate: float = 0.70
+    replay_max_episodes: int = 20
 
 
 @dataclass

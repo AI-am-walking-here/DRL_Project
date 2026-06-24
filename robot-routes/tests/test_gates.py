@@ -9,7 +9,7 @@ import numpy as np
 from robot_routes.contracts import Transition
 from robot_routes.data.schema import write_shard
 from robot_routes.expert.collision import CollisionChecker
-from robot_routes.pipeline.gates import gate_data, _verify_recovery_segments
+from robot_routes.pipeline.gates import _verify_recovery_segments, gate_data
 from robot_routes.utils.config import DaggerRacConfig, load_config
 
 

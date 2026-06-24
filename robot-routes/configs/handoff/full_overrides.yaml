@@ -1,6 +1,12 @@
 n_demos: 2000
 bc_epochs: 200
-dagger_rounds: 6
-dagger_budget: 30000
-dagger_epochs: 85
+dagger_rounds: 4
+dagger_budget: 15000
+dagger_epochs: 70
+curriculum_epochs: 75
 ppo_steps: 350000
+# PPO is a required deliverable for the DRL class, so always run Stage 4 rather
+# than letting the G-PPO validity gate skip it; this also decouples `full` from
+# waiting on the sibling `rac_noreroute` eval (verdicts still compare at the end).
+ppo_force: true
+# 3-day rerun budget: fewer curriculum levels in curriculum.yaml; lighter DAgger + per-step curriculum retrains.

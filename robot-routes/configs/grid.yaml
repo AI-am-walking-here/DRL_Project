@@ -1,7 +1,10 @@
+# Core hypothesis grid — the only grid this project runs.
+#   H1 (recovery helps):        full        vs  bc_dagger
+#   H2 (route diversity helps): full        vs  rac_noreroute
+# 3 conditions x 3 seeds = 9 sequential jobs, ~2.5-3 days on one RTX 4090 with
+# the 3-day budget overrides (configs/handoff/full_overrides.yaml). Every `full`
+# job includes the PPO diversity-reward stage (Stage 4), forced on for the class.
 conditions:
-  - name: bc
-    stages: [collect_bc, train_bc, evaluate_val]
-    rac_enabled: false
   - name: bc_dagger
     stages: [collect_bc, train_bc, dagger_rac, evaluate_val]
     rac_enabled: false
@@ -12,17 +15,10 @@ conditions:
     stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val, ppo, evaluate_test, verdicts, report_assets]
     rac_enabled: true
     reroute_enabled: true
-  - name: curriculum
-    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val]
-    synthetic_obs: true
-  - name: curriculum_no_synth
-    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val]
-    synthetic_obs: false
-  - name: rl_diversity
-    stages: [collect_bc, train_bc, dagger_rac, curriculum, evaluate_val, ppo, evaluate_test, verdicts, report_assets]
-    requires: [rac_noreroute.curriculum.eval_val]
 seeds: [0, 1, 2]
-priority: [full, rac_noreroute, curriculum, bc_dagger, bc, curriculum_no_synth, rl_diversity]
+# Run the H1/H2 comparators before `full` so its verdicts compare against
+# completed sibling evals. PPO inside `full` is forced and does not block on
+# these (configs/handoff/full_overrides.yaml), so a comparator failure never
+# strands a `full` job.
+priority: [bc_dagger, rac_noreroute, full]
 dep_timeout_h: 48
-ppo:
-  requires: [rac_noreroute.curriculum.eval_val]

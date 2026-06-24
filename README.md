@@ -10,8 +10,8 @@ Deep reinforcement learning final project workspace.
 ## Quick start
 
 ```bash
-git clone https://github.com/AI-am-walking-here/2026-DRL-Final.git
-cd 2026-DRL-Final/robot-routes
+git clone https://github.com/AI-am-walking-here/DRL_Project.git
+cd DRL_Project
 uv sync && source .venv/bin/activate
 make check
 make smoke
@@ -21,5 +21,5 @@ See [`robot-routes/README.md`](robot-routes/README.md) for profiles, grid runs, 
 
 ## Repository
 
-- **GitHub:** https://github.com/AI-am-walking-here/2026-DRL-Final
+- **GitHub:** https://github.com/AI-am-walking-here/DRL_Project
 - **Local path:** `2026 DRL Final` (parent workspace folder)

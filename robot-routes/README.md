@@ -21,27 +21,27 @@ make smoke
 | `smoke` | CI / sanity | < 1 h |
 | `medium` | Preflight learning path | ~3–5 h |
 | `day` | Single-condition overnight | ~17 h |
-| `full` | Paper grid (via `grid-5day`) | ~5 days |
+| `full` | Core hypothesis grid (3-day budget) | ~2.5–3 days |
 
-## 5-day grid (current plan)
+## Core hypothesis grid (3-day budget)
 
-After day preflight completes:
+The grid tests the pre-registered hypotheses H1 (`full` vs `bc_dagger`) and H2
+(`full` vs `rac_noreroute`) across 3 seeds — 9 sequential jobs on one 4090. Each
+`full` job includes the PPO diversity-reward stage.
 
 ```bash
-make plan-5day              # analyze day → write configs/handoff/full_overrides.yaml
-make handoff-5day           # full scenes → launch 9-job grid unattended
-# or manually:
-make scene-sets PROFILE=full
-PIPELINE_SKIP_PREREG=1 make grid-5day OUT=runs/grid
+make scene-sets PROFILE=full     # one-time, expert-verified scenes (~hours, CPU)
+make grid PROFILE=full           # 9-job core grid (configs/grid.yaml), sequential
 ```
 
-Monitor: `tail -f runs/preflight/grid_5day_handoff.log` and `runs/grid/*/pipeline_status.txt`
+Monitor a single run: `make watch RUN_DIR=runs/grid/full_seed0`
+(or `tail -f runs/grid/*/pipeline_status.txt`).
 
-## Reproduction
+## Single run / reproduction
 
 ```bash
-make reproduce SEED=0 CONDITION=full PROFILE=smoke
-make pipeline PROFILE=smoke SEED=0 CONDITION=full
+make pipeline   CONDITION=full PROFILE=smoke SEED=0   # one condition, end-to-end
+make reproduce  CONDITION=full PROFILE=full  SEED=0
 ```
 
 ## Sharing with a collaborator
@@ -57,5 +57,16 @@ make smoke
 ```
 
 Large artifacts (`runs/`, checkpoints, `.venv/`) are gitignored. Scene sets for `full` are generated locally (`make scene-sets PROFILE=full`).
+
+## Layout
+
+| Path | Role |
+|------|------|
+| `src/robot_routes/{envs,expert,agents,data,diversity,eval}` | Learning core (env, RRT expert, policies, datasets, metrics) |
+| `src/robot_routes/pipeline/` | Orchestration: state, gates, resume, progress, watchdog |
+| `scripts/run_pipeline.py` | Single-run DAG orchestrator |
+| `scripts/07_launch_grid.py` | Sequential single-GPU grid launcher |
+| `scripts/0X_*.py` | Per-stage entry points (smoke, collect, BC, DAgger, curriculum, PPO, eval) |
+| `configs/` | YAML configs (env, expert, train, eval, grid) |
 
 To grant access: GitHub repo → **Settings → Collaborators** → add your partner's GitHub username.

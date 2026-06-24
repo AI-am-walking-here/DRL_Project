@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from robot_routes.contracts import JointPath, Q_HOME, Obstacle, SceneSpec
+from robot_routes.contracts import Q_HOME, JointPath, Obstacle, SceneSpec
 from robot_routes.diversity.route_metrics import calibrate_delta, frechet, resample_path
 from robot_routes.expert.oracle import ExpertOracle
 from robot_routes.expert.rrt_connect import _resample, _shortcut

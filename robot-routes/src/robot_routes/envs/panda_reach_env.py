@@ -284,12 +284,15 @@ class PandaReachEnv(gym.Env):
     def scene(self) -> SceneSpec:
         return self._scene
 
-    def render(self) -> np.ndarray | None:
+    def render(self, *, camera: mujoco.MjvCamera | None = None) -> np.ndarray | None:
         if self.render_mode is None:
             return None
         if self._renderer is None:
-            self._renderer = mujoco.Renderer(self.model, height=480, width=640)
-        self._renderer.update_scene(self.data)
+            self._renderer = mujoco.Renderer(self.model, height=720, width=1280)
+        if camera is not None:
+            self._renderer.update_scene(self.data, camera=camera)
+        else:
+            self._renderer.update_scene(self.data)
         return self._renderer.render()
 
     def close(self) -> None:

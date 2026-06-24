@@ -27,11 +27,10 @@ from robot_routes.pipeline.gates import eval_success_on_scenes, gate_bc
 from robot_routes.pipeline.notify import notify
 from robot_routes.pipeline.progress import PipelineProgress, ordered_stages
 from robot_routes.pipeline.setup_checks import assert_delta_invariant, run_setup_checks
+from robot_routes.pipeline.stage_resume import eval_artifact_valid, eval_resume_meta
 from robot_routes.pipeline.state_merge import merge_pipeline_state, reconcile_from_stamps
 from robot_routes.pipeline.verdicts import write_verdicts
-from robot_routes.pipeline.stage_resume import eval_artifact_valid, eval_resume_meta
 from robot_routes.pipeline.watchdog import StageWatchdog, run_with_heartbeat
-from robot_routes.utils.gpu_oom import cuda_alloc_env, is_cuda_oom, write_oom_backoff
 from robot_routes.utils.config import (
     BCConfig,
     DaggerRacConfig,
@@ -42,6 +41,7 @@ from robot_routes.utils.config import (
     load_yaml,
 )
 from robot_routes.utils.device import project_python, resolve_device
+from robot_routes.utils.gpu_oom import cuda_alloc_env, is_cuda_oom, write_oom_backoff
 from robot_routes.utils.seeding import seed_everything
 
 STAGES = [
@@ -372,6 +372,81 @@ def restart_args(force: bool) -> list[str]:
     return ["--force-restart"] if force else []
 
 
+class StageRunner:
+    """Bundles the per-run context every stage needs, so call sites stay small.
+
+    Replaces the repeated ``run_stage(..., watchdog_min=..., progress=...,
+    pipeline_cfg=..., profile=..., force=...)`` boilerplate plus the
+    ``if not ok: progress.close(); sys.exit(1)`` guard after every call.
+    """
+
+    def __init__(
+        self,
+        state: PipelineState,
+        root: Path,
+        progress: PipelineProgress,
+        pipeline_cfg: dict[str, Any],
+        profile: str,
+        force: bool,
+        watchdog_min: int,
+    ) -> None:
+        self.state = state
+        self.root = root
+        self.progress = progress
+        self.pipeline_cfg = pipeline_cfg
+        self.profile = profile
+        self.force = force
+        self.watchdog_min = watchdog_min
+
+    def _run(
+        self, name: str, cfg_slice: dict[str, Any], cmd: list[str] | None, fn: Any
+    ) -> tuple[bool, bool]:
+        return run_stage(
+            name,
+            cmd,
+            self.state,
+            cfg_slice,
+            self.root,
+            fn=fn,
+            watchdog_min=self.watchdog_min,
+            progress=self.progress,
+            pipeline_cfg=self.pipeline_cfg,
+            profile=self.profile,
+            force=self.force,
+        )
+
+    def run(
+        self,
+        name: str,
+        cfg_slice: dict[str, Any],
+        *,
+        cmd: list[str] | None = None,
+        fn: Any = None,
+    ) -> bool:
+        """Run a required stage. On failure, close progress and exit(1).
+
+        Returns True if the stage actually executed (vs being resume-skipped).
+        """
+        ok, executed = self._run(name, cfg_slice, cmd, fn)
+        if not ok:
+            self.progress.close(ok=False)
+            sys.exit(1)
+        return executed
+
+    def run_optional(
+        self,
+        name: str,
+        cfg_slice: dict[str, Any],
+        *,
+        cmd: list[str] | None = None,
+        fn: Any = None,
+    ) -> bool:
+        """Run a stage whose failure must not abort the pipeline (e.g. the
+        post-PPO re-eval). Returns True only if it executed successfully."""
+        ok, executed = self._run(name, cfg_slice, cmd, fn)
+        return ok and executed
+
+
 def main() -> None:
     import argparse
 
@@ -499,6 +574,10 @@ def main() -> None:
         run_dir, "pipeline", {"condition": args.condition, "profile": profile, **prof}
     )
 
+    runner = StageRunner(
+        state, root, progress, pipeline_cfg, profile, force, watchdog_min
+    )
+
     def do_setup() -> None:
         if not disk_ok(disk_min):
             raise RuntimeError(f"disk preflight failed (< {disk_min} GB free)")
@@ -511,68 +590,33 @@ def main() -> None:
         data["git_hash"] = git_hash(root)
         meta.write_text(json.dumps(data, indent=2))
 
-    ok, _ = run_stage(
-        "setup",
-        None,
-        state,
-        {"setup": env_cfg},
-        root,
-        fn=do_setup,
-        watchdog_min=watchdog_min,
-        progress=progress,
-        pipeline_cfg=pipeline_cfg,
-        profile=profile,
-        force=force,
-    )
-    if not ok:
-        progress.close(ok=False)
-        sys.exit(1)
-
-    def do_scene_sets() -> None:
-        verify_scene_sets(root, profile=profile)
+    runner.run("setup", {"setup": env_cfg}, fn=do_setup)
 
     if "collect_bc" in stages_allowed or "evaluate_val" in stages_allowed:
-        ok, _ = run_stage(
+        runner.run(
             "scene_sets",
-            None,
-            state,
             {"scene_sets": profile},
-            root,
-            fn=do_scene_sets,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
+            fn=lambda: verify_scene_sets(root, profile=profile),
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
 
     cal_payload: dict[str, Any] = {}
 
     def do_calibrate() -> None:
         nonlocal cal_payload
         cal_path = root / "calibration" / "delta.json"
-        if not cal_path.exists():
-            cal_payload = run_calibration(root)
-            passed, msg = gate_cal(cal_payload)
-            if not passed:
-                raise RuntimeError(msg)
-        else:
+        if cal_path.exists():
             cal_payload = json.loads(cal_path.read_text())
-            passed, msg = gate_cal(cal_payload)
-            if not passed:
-                raise RuntimeError(msg)
+        else:
+            cal_payload = run_calibration(root)
+        passed, msg = gate_cal(cal_payload)
+        if not passed:
+            raise RuntimeError(msg)
 
-    ok, _ = run_stage(
+    runner.run(
         "calibrate_delta",
-        None,
-        state,
         {"calibrate": pipeline_cfg.get("calibration_seed", 424242)},
-        root,
         fn=do_calibrate,
-        watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
     )
-    if not ok:
-        progress.close(ok=False)
-        sys.exit(1)
     delta = load_delta(root)
     cal_path = root / "calibration/delta.json"
     cal_sha = ""
@@ -582,67 +626,44 @@ def main() -> None:
 
     policy_cfg = PolicyConfig(**load_yaml(root / "configs/train/bc.yaml").get("policy", {}))
     eval_cfg = load_config(root / "configs/eval/default.yaml", EvalConfig)
-    div_cfg = load_yaml(root / "configs/eval/default.yaml").get("diversity", {})
-    div_cfg_obj = DiversityConfig(**div_cfg)
+    div_cfg_obj = DiversityConfig(**load_yaml(root / "configs/eval/default.yaml").get("diversity", {}))
     sdiv = smoke_div_cfg(div_cfg_obj, profile)
     bc_cfg = load_config(bc_cfg_path, BCConfig)
     rng = seed_everything(args.seed)
     head_compatible = True
 
     if "collect_bc" in stages_allowed:
-        ok, _ = run_stage(
+        runner.run(
             "collect_bc",
-            [
+            yaml.safe_load(Path(bc_cfg_path).read_text()),
+            cmd=[
                 py,
                 "scripts/01_collect_bc_demos.py",
-                "--config",
-                bc_cfg_path,
-                "--seed",
-                str(args.seed),
-                "--out",
-                str(run_dir / "collect"),
-                "--run-dir",
-                str(run_dir),
+                "--config", bc_cfg_path,
+                "--seed", str(args.seed),
+                "--out", str(run_dir / "collect"),
+                "--run-dir", str(run_dir),
                 *restart_args(force),
             ],
-            state,
-            yaml.safe_load(Path(bc_cfg_path).read_text()),
-            root,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
 
     ckpt = run_dir / "bc" / "best.pt"
     if "train_bc" in stages_allowed:
-        ok, train_ran = run_stage(
+        train_ran = runner.run(
             "train_bc",
-            [
+            yaml.safe_load(Path(bc_cfg_path).read_text()),
+            cmd=[
                 py,
                 "scripts/02_train_bc.py",
-                "--config",
-                bc_cfg_path,
-                "--seed",
-                str(args.seed),
-                "--out",
-                str(run_dir / "bc"),
-                "--data",
-                str(run_dir / "collect/demos.h5"),
-                "--device",
-                args.device,
-                "--run-dir",
-                str(run_dir),
+                "--config", bc_cfg_path,
+                "--seed", str(args.seed),
+                "--out", str(run_dir / "bc"),
+                "--data", str(run_dir / "collect/demos.h5"),
+                "--device", args.device,
+                "--run-dir", str(run_dir),
                 *restart_args(force),
             ],
-            state,
-            yaml.safe_load(Path(bc_cfg_path).read_text()),
-            root,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
         ckpt = run_dir / "bc" / "best.pt"
         if train_ran:
             scenes_l0 = (
@@ -678,14 +699,23 @@ def main() -> None:
                         passed = True
                     else:
                         notify(state.run_dir, "G-BC_FAILED", msg=msg, **diag)
-                        if profile == "smoke" or prof.get("preflight"):
-                            state.log_event(
-                                "G-BC_preflight_baseline",
-                                msg=msg,
-                                profile=profile,
-                                **diag,
+                        # Continue to DAgger/RaC if a downstream repair stage exists:
+                        # those stages exist precisely to fix weak BC (§5.3). Only a
+                        # terminal condition (no dagger_rac downstream, non-preflight)
+                        # treats a low BC as a hard failure.
+                        downstream_repair = "dagger_rac" in stages_allowed
+                        if profile == "smoke" or prof.get("preflight") or downstream_repair:
+                            reason = (
+                                "continue_to_dagger"
+                                if downstream_repair
+                                else "preflight_baseline"
                             )
-                            state.set_status("train_bc", "COMPLETED", config_hash=state.stage_hash("train_bc"))
+                            state.log_event(
+                                "G-BC_continue", reason=reason, msg=msg, profile=profile, **diag
+                            )
+                            state.set_status(
+                                "train_bc", "COMPLETED", config_hash=state.stage_hash("train_bc")
+                            )
                             (run_dir / "train_bc.stamp").touch()
                         else:
                             state.set_status("train_bc", "FAILED", gate="G-BC", msg=msg)
@@ -693,41 +723,24 @@ def main() -> None:
                             sys.exit(1)
 
     if "dagger_rac" in stages_allowed:
-        ok, _ = run_stage(
+        runner.run(
             "dagger_rac",
-            [
+            yaml.safe_load(Path(dagger_cfg_path).read_text()),
+            cmd=[
                 py,
                 "scripts/03_run_dagger_rac.py",
-                "--config",
-                dagger_cfg_path,
-                "--seed",
-                str(args.seed),
-                "--out",
-                str(run_dir / "dagger"),
-                "--bc-data",
-                str(run_dir / "collect/demos.h5"),
-                "--bc-ckpt",
-                str(ckpt),
-                "--delta",
-                str(delta),
-                "--run-dir",
-                str(run_dir),
-                "--profile",
-                profile,
-                "--device",
-                args.device,
-                "--run-dir",
-                str(run_dir),
+                "--config", dagger_cfg_path,
+                "--seed", str(args.seed),
+                "--out", str(run_dir / "dagger"),
+                "--bc-data", str(run_dir / "collect/demos.h5"),
+                "--bc-ckpt", str(ckpt),
+                "--delta", str(delta),
+                "--run-dir", str(run_dir),
+                "--profile", profile,
+                "--device", args.device,
                 *restart_args(force),
             ],
-            state,
-            yaml.safe_load(Path(dagger_cfg_path).read_text()),
-            root,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
         sync_dagger_rounds(run_dir, state)
         ckpt = run_dir / "dagger" / "best.pt"
         if not ckpt.exists():
@@ -742,37 +755,29 @@ def main() -> None:
             merged_h5 = cand
 
     if "curriculum" in stages_allowed:
-        ok, _ = run_stage(
+        cur_extra: list[str] = []
+        if prof.get("curriculum_epochs") is not None:
+            cur_extra += ["--retrain-epochs", str(int(prof["curriculum_epochs"]))]
+        if prof.get("dagger_budget") is not None:
+            cur_extra += ["--step-budget", str(int(prof["dagger_budget"]))]
+        runner.run(
             "curriculum",
-            [
+            yaml.safe_load(Path(cur_cfg_path).read_text()),
+            cmd=[
                 py,
                 "scripts/04_run_curriculum.py",
-                "--config",
-                cur_cfg_path,
-                "--seed",
-                str(args.seed),
-                "--out",
-                str(run_dir / "curriculum"),
-                "--dagger-out",
-                str(run_dir / "dagger"),
-                "--delta",
-                str(delta),
-                "--profile",
-                profile,
-                "--device",
-                args.device,
-                "--run-dir",
-                str(run_dir),
+                "--config", cur_cfg_path,
+                "--seed", str(args.seed),
+                "--out", str(run_dir / "curriculum"),
+                "--dagger-out", str(run_dir / "dagger"),
+                "--delta", str(delta),
+                "--profile", profile,
+                "--device", args.device,
+                "--run-dir", str(run_dir),
                 *restart_args(force),
+                *cur_extra,
             ],
-            state,
-            yaml.safe_load(Path(cur_cfg_path).read_text()),
-            root,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
         ckpt = run_dir / "curriculum" / "best.pt"
         cur_merged = sorted((run_dir / "curriculum").glob("merged_cur_*.h5"))
         if cur_merged:
@@ -803,91 +808,77 @@ def main() -> None:
     eval_ckpt = ckpt
     ppo_ran = False
 
-    if "evaluate_val" in stages_allowed:
-        eval_scenes = eval_scene_cap(prof, eval_cfg)
-        val_l0 = (
-            load_scenes(root, "val_L0")[:eval_scenes]
-            if scene_set_path(root, "val_L0").exists()
-            else []
-        )
-        val_unseen = (
-            load_scenes(root, "val_unseen")[:eval_scenes]
+    def load_val_scenes() -> tuple[list, list]:
+        cap = eval_scene_cap(prof, eval_cfg)
+        l0 = load_scenes(root, "val_L0")[:cap] if scene_set_path(root, "val_L0").exists() else []
+        unseen = (
+            load_scenes(root, "val_unseen")[:cap]
             if scene_set_path(root, "val_unseen").exists()
-            else val_l0
+            else l0
+        )
+        return l0, unseen
+
+    def evaluate_split(scenes: list) -> dict[str, Any]:
+        from robot_routes.eval.evaluate import evaluate_checkpoint
+
+        return evaluate_checkpoint(
+            eval_ckpt,
+            scenes,
+            policy_cfg,
+            eval_cfg,
+            sdiv,
+            delta=delta,
+            include_routes=True,
+            routes_limit=routes_scene_cap(prof, eval_cfg, len(scenes)),
+            root=root,
+            include_planner_ceiling=profile != "smoke",
         )
 
-        def do_eval_val() -> None:
-            from robot_routes.eval.evaluate import evaluate_checkpoint
-
-            val_path = run_dir / "eval/val_eval.json"
-            if not force and eval_artifact_valid(
-                val_path, eval_ckpt, meta={"profile": profile, "post_ppo": False}
-            ):
-                print(f"evaluate_val: {val_path} exists for {eval_ckpt} — skipping")
-                return
-            if not eval_ckpt.exists():
-                raise FileNotFoundError(str(eval_ckpt))
-            res_l0 = evaluate_checkpoint(
-                eval_ckpt,
-                val_l0,
-                policy_cfg,
-                eval_cfg,
-                sdiv,
-                delta=delta,
-                include_routes=True,
-                routes_limit=routes_scene_cap(prof, eval_cfg, len(val_l0)),
-                root=root,
-                include_planner_ceiling=profile != "smoke",
+    def write_val_eval(*, post_ppo: bool) -> None:
+        val_path = run_dir / "eval/val_eval.json"
+        if not force and eval_artifact_valid(
+            val_path, eval_ckpt, meta={"profile": profile, "post_ppo": post_ppo}
+        ):
+            tag = " (post-ppo)" if post_ppo else ""
+            print(f"evaluate_val: {val_path} exists for {eval_ckpt}{tag} — skipping")
+            return
+        if not eval_ckpt.exists():
+            raise FileNotFoundError(str(eval_ckpt))
+        val_l0, val_unseen = load_val_scenes()
+        res_l0 = evaluate_split(val_l0)
+        res_unseen = evaluate_split(val_unseen)
+        (run_dir / "eval").mkdir(exist_ok=True)
+        val_path.write_text(
+            json.dumps(
+                {
+                    **res_l0,
+                    "val_unseen": res_unseen,
+                    "validity_frac": res_unseen.get("validity_frac", 0.0),
+                    "_resume_meta": eval_resume_meta(eval_ckpt, profile=profile, post_ppo=post_ppo),
+                },
+                indent=2,
             )
-            res_unseen = evaluate_checkpoint(
-                eval_ckpt,
-                val_unseen,
-                policy_cfg,
-                eval_cfg,
-                sdiv,
-                delta=delta,
-                include_routes=True,
-                routes_limit=routes_scene_cap(prof, eval_cfg, len(val_unseen)),
-                root=root,
-                include_planner_ceiling=profile != "smoke",
-            )
-            (run_dir / "eval").mkdir(exist_ok=True)
-            combined = {
-                **res_l0,
-                "val_unseen": res_unseen,
-                "validity_frac": res_unseen.get("validity_frac", 0.0),
-                "_resume_meta": eval_resume_meta(
-                    eval_ckpt, profile=profile, post_ppo=False
-                ),
-            }
-            val_path.write_text(json.dumps(combined, indent=2))
+        )
 
-        ok, _ = run_stage(
+    if "evaluate_val" in stages_allowed:
+        runner.run(
             "evaluate_val",
-            None,
-            state,
             {"eval_val": profile, "ckpt": str(eval_ckpt)},
-            root,
-            fn=do_eval_val,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
+            fn=lambda: write_val_eval(post_ppo=False),
         )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
 
     run_ppo = "ppo" in stages_allowed
     if run_ppo:
         if state.status("ppo") == "WAITING_DEP":
             state.set_status("ppo", "PENDING")
         deps = spec.get("requires") or grid.get("ppo", {}).get("requires", [])
-        dep_timeout = grid.get("dep_timeout_h", 48)
-        if prof.get("ppo_standalone"):
+        dep_timeout = 0 if profile == "smoke" else grid.get("dep_timeout_h", 48)
+        # When PPO is forced (class deliverable) or standalone, do not block on a
+        # sibling condition's eval — that cross-job wait previously cascaded a
+        # single BC failure into 4 never-started jobs. Verdicts still compare
+        # against whatever sibling evals exist at the end.
+        if prof.get("ppo_standalone") or prof.get("ppo_force"):
             deps_ok = True
-        elif profile == "smoke":
-            dep_timeout = 0
-            deps_ok = not deps or wait_for_dep(
-                runs_root, deps, args.seed, dep_timeout, state, "ppo", progress=progress
-            )
         else:
             deps_ok = not deps or wait_for_dep(
                 runs_root, deps, args.seed, dep_timeout, state, "ppo", progress=progress
@@ -898,7 +889,7 @@ def main() -> None:
             state.log_event("G-PPO", result="NO-GO", reason="dep_unmet")
             progress.stage_skipped("ppo")
             run_ppo = False
-        if run_ppo and deps_ok:
+        if run_ppo:
             if prof.get("ppo_force"):
                 go, reason, gmeta = True, "preflight_override", {}
             else:
@@ -919,32 +910,21 @@ def main() -> None:
                 progress.stage_skipped("ppo")
                 run_ppo = False
         if run_ppo:
-            ok, _ = run_stage(
+            runner.run(
                 "ppo",
-                [
+                yaml.safe_load((root / "configs/train/rl_diversity.yaml").read_text()),
+                cmd=[
                     py,
                     "scripts/05_train_rl_diversity.py",
-                    "--seed",
-                    str(args.seed),
-                    "--out",
-                    str(run_dir / "ppo"),
-                    "--curriculum-ckpt",
-                    str(ckpt),
-                    "--device",
-                    args.device,
-                    "--run-dir",
-                    str(run_dir),
-                ]
-                + (["--steps", str(prof["ppo_steps"])] if prof.get("ppo_steps") else [])
-                + restart_args(force),
-                state,
-                yaml.safe_load((root / "configs/train/rl_diversity.yaml").read_text()),
-                root,
-                watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
+                    "--seed", str(args.seed),
+                    "--out", str(run_dir / "ppo"),
+                    "--curriculum-ckpt", str(ckpt),
+                    "--device", args.device,
+                    "--run-dir", str(run_dir),
+                    *(["--steps", str(prof["ppo_steps"])] if prof.get("ppo_steps") else []),
+                    *restart_args(force),
+                ],
             )
-            if not ok:
-                progress.close(ok=False)
-                sys.exit(1)
             ppo_ckpt = run_dir / "ppo" / "ppo.pt"
             if ppo_ckpt.exists():
                 eval_ckpt = ppo_ckpt
@@ -952,70 +932,10 @@ def main() -> None:
 
     if ppo_ran and "evaluate_val" in stages_allowed:
         state.invalidate_downstream("evaluate_val")
-        eval_scenes = eval_scene_cap(prof, eval_cfg)
-        val_l0 = (
-            load_scenes(root, "val_L0")[:eval_scenes]
-            if scene_set_path(root, "val_L0").exists()
-            else []
-        )
-        val_unseen = (
-            load_scenes(root, "val_unseen")[:eval_scenes]
-            if scene_set_path(root, "val_unseen").exists()
-            else val_l0
-        )
-
-        def do_eval_val_post_ppo() -> None:
-            from robot_routes.eval.evaluate import evaluate_checkpoint
-
-            val_path = run_dir / "eval/val_eval.json"
-            if not force and eval_artifact_valid(
-                val_path, eval_ckpt, meta={"profile": profile, "post_ppo": True}
-            ):
-                print(f"evaluate_val: {val_path} exists for {eval_ckpt} (post-ppo) — skipping")
-                return
-            res_l0 = evaluate_checkpoint(
-                eval_ckpt,
-                val_l0,
-                policy_cfg,
-                eval_cfg,
-                sdiv,
-                delta=delta,
-                include_routes=True,
-                routes_limit=routes_scene_cap(prof, eval_cfg, len(val_l0)),
-                root=root,
-                include_planner_ceiling=profile != "smoke",
-            )
-            res_unseen = evaluate_checkpoint(
-                eval_ckpt,
-                val_unseen,
-                policy_cfg,
-                eval_cfg,
-                sdiv,
-                delta=delta,
-                include_routes=True,
-                routes_limit=routes_scene_cap(prof, eval_cfg, len(val_unseen)),
-                root=root,
-                include_planner_ceiling=profile != "smoke",
-            )
-            (run_dir / "eval").mkdir(exist_ok=True)
-            combined = {
-                **res_l0,
-                "val_unseen": res_unseen,
-                "validity_frac": res_unseen.get("validity_frac", 0.0),
-                "_resume_meta": eval_resume_meta(
-                    eval_ckpt, profile=profile, post_ppo=True
-                ),
-            }
-            val_path.write_text(json.dumps(combined, indent=2))
-
-        run_stage(
+        runner.run_optional(
             "evaluate_val",
-            None,
-            state,
             {"eval_val": profile, "ckpt": str(eval_ckpt), "post_ppo": True},
-            root,
-            fn=do_eval_val_post_ppo,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
+            fn=lambda: write_val_eval(post_ppo=True),
         )
 
     if "evaluate_test" in stages_allowed:
@@ -1026,52 +946,22 @@ def main() -> None:
         )
 
         def do_eval_test() -> None:
-            from robot_routes.eval.evaluate import evaluate_checkpoint
-
             test_path = run_dir / "eval/test_eval.json"
-            if not force and eval_artifact_valid(
-                test_path, eval_ckpt, meta={"profile": profile}
-            ):
+            if not force and eval_artifact_valid(test_path, eval_ckpt, meta={"profile": profile}):
                 print(f"evaluate_test: {test_path} exists for {eval_ckpt} — skipping")
                 return
-            res = evaluate_checkpoint(
-                eval_ckpt,
-                test_scenes,
-                policy_cfg,
-                eval_cfg,
-                sdiv,
-                delta=delta,
-                include_routes=True,
-                routes_limit=routes_scene_cap(prof, eval_cfg, len(test_scenes)),
-                root=root,
-                include_planner_ceiling=profile != "smoke",
-            )
+            res = evaluate_split(test_scenes)
             (run_dir / "eval").mkdir(exist_ok=True)
             test_path.write_text(
                 json.dumps(
-                    {
-                        **res,
-                        "_resume_meta": eval_resume_meta(eval_ckpt, profile=profile),
-                    },
-                    indent=2,
+                    {**res, "_resume_meta": eval_resume_meta(eval_ckpt, profile=profile)}, indent=2
                 )
             )
             (run_dir / "eval/test_touched.json").write_text(
                 json.dumps({"seed": args.seed, "ts": datetime.now(timezone.utc).isoformat()})
             )
 
-        ok, _ = run_stage(
-            "evaluate_test",
-            None,
-            state,
-            {"eval_test": profile, "ckpt": str(eval_ckpt)},
-            root,
-            fn=do_eval_test,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
-        )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
+        runner.run("evaluate_test", {"eval_test": profile, "ckpt": str(eval_ckpt)}, fn=do_eval_test)
 
     if "verdicts" in stages_allowed:
 
@@ -1081,9 +971,7 @@ def main() -> None:
                 eval_path = run_dir / "eval/val_eval.json"
             verdict_path = run_dir / "hypotheses_verdicts.json"
             if not force and eval_artifact_valid(
-                verdict_path,
-                eval_ckpt,
-                meta={"eval_path": str(eval_path.resolve())},
+                verdict_path, eval_ckpt, meta={"eval_path": str(eval_path.resolve())}
             ):
                 print(f"verdicts: {verdict_path} exists — skipping")
                 return
@@ -1091,23 +979,10 @@ def main() -> None:
             cp = {k: v for k, v in compares.items() if v is not None}
             v = write_verdicts(run_dir, eval_path, mde=eval_cfg.mde_pts, compare_paths=cp or None)
             payload = json.loads(v.read_text())
-            payload["_resume_meta"] = eval_resume_meta(
-                eval_ckpt, eval_path=str(eval_path.resolve())
-            )
+            payload["_resume_meta"] = eval_resume_meta(eval_ckpt, eval_path=str(eval_path.resolve()))
             v.write_text(json.dumps(payload, indent=2))
 
-        ok, _ = run_stage(
-            "verdicts",
-            None,
-            state,
-            {"verdicts": args.condition},
-            root,
-            fn=do_verdicts,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
-        )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
+        runner.run("verdicts", {"verdicts": args.condition}, fn=do_verdicts)
 
     if "report_assets" in stages_allowed:
 
@@ -1121,18 +996,7 @@ def main() -> None:
                 return
             build_report(run_dir, report_dir)
 
-        ok, _ = run_stage(
-            "report_assets",
-            None,
-            state,
-            {"report": profile},
-            root,
-            fn=do_report,
-            watchdog_min=watchdog_min, progress=progress, pipeline_cfg=pipeline_cfg, profile=profile, force=force,
-        )
-        if not ok:
-            progress.close(ok=False)
-            sys.exit(1)
+        runner.run("report_assets", {"report": profile}, fn=do_report)
 
     sync_dagger_rounds(run_dir, state)
     state.set_status("pipeline", "COMPLETED")

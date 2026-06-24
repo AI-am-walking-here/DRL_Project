@@ -150,7 +150,6 @@ def collect_round(
     last_ckpt = b
     reroute_attempts = 0
     fallback_accepts = 0
-    episode_scenes: dict[int, str] = {}
     while b < cfg.budget:
         if sample_scene_fn:
             scene = sample_scene_fn(env, expert, rng, level)
