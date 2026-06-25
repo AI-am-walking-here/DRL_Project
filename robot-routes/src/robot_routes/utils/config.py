@@ -47,8 +47,20 @@ class EnvConfig:
     n_substeps: int = 25
     horizon: int = 300
     action_clip: float = 0.05
-    success_tol_m: float = 0.05
+    # Success = end-effector within success_tol_m of the goal, held for
+    # success_hold_steps. The "archery target": on-target at success_tol_m,
+    # bullseye (full bonus) at/inside bullseye_tol_m.
+    success_tol_m: float = 0.12
     success_hold_steps: int = 5
+    bullseye_tol_m: float = 0.05
+    # Reward weights (PPO only; BC/DAgger are supervised and ignore reward).
+    w_progress: float = 10.0  # potential-based: reward per metre closed toward goal
+    w_time: float = 0.02  # living penalty per step → reward fast reaches
+    w_collision: float = 15.0  # a hit is bad ...
+    w_action: float = 1e-3
+    r_success: float = 10.0  # reaching the 12cm target at all = the goal
+    r_bullseye: float = 10.0  # extra, climbs steeply toward the 5cm center
+    r_timeout: float = 25.0  # ... but stalling out is much worse than a hit
     jlimit_margin_rad: float = 0.02
     max_obstacles: int = 8
     obs_dim: int = 79
@@ -131,6 +143,12 @@ class DaggerRacConfig:
     reroute_attempts: int = 5
     rac_enabled: bool = True
     reroute_enabled: bool = True
+    # Collection: focus on scenes the policy nearly solves (expert can finish from there).
+    level_bounds: list[int] | None = None  # default [2, 3] in collect_round
+    almost_solve_tol_m: float = 0.18  # keep episodes that get within ~18cm of goal
+    max_far_dist_m: float = 0.45  # discard episodes that never get closer than this
+    skip_far_failures: bool = True  # drop hopeless episodes (no recovery training)
+    rac_only_if_almost: bool = True  # RaC recovery only when almost at goal; else expert-finish or skip
     weights: dict[str, float] | None = None
 
 
@@ -149,7 +167,13 @@ class PPOConfig:
     clip: float = 0.2
     gae_lambda: float = 0.95
     gamma: float = 0.99
-    lr: float = 1e-4
+    lr: float = 1e-4  # legacy / fallback
+    # Stabilized fine-tuning: warm up the value head before touching the policy,
+    # nudge the policy with a low LR, and hard-stop any update that drifts too far.
+    policy_lr: float = 1e-5
+    value_lr: float = 1e-3
+    value_warmup_steps: int = 15_000
+    kl_stop: float = 0.05
     n_envs: int = 8
     kl_anchor: float = 0.5
     entropy_coef: float = 0.005
@@ -159,6 +183,11 @@ class PPOConfig:
     rdiv_cap: float = 0.5
     beta_halvings_max: int = 3
     total_steps: int = 1_000_000
+    # Diversity-reward gating. Default: success-only (near-miss ungating consistently
+    # degraded the policy in BC-base probes — see initial_testings/ppo_collapse_experiments).
+    div_ungate: bool = False
+    div_quality_d0: float = 0.30
+    div_ungate_min_quality: float = 1.0  # 1.0 = success-only even if div_ungate is enabled
 
 
 @dataclass

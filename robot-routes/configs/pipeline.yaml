@@ -34,6 +34,17 @@ profile:
     skip_prereg: true
     ppo_standalone: true
     ppo_force: true
+  # Grid / class runs: handoff/full_overrides.yaml layers on top of this baseline.
+  full:
+    n_demos: 2000
+    dagger_rounds: 4
+    dagger_budget: 15000
+    bc_epochs: 200
+    dagger_epochs: 70
+    curriculum_epochs: 75
+    ppo_steps: 350000
+    ppo_standalone: true
+    ppo_force: true
 watchdog_min: 30
 # Per-stage silence limits (minutes) before orchestrator self-aborts. Subprocess
 # stages are NOT killed while the child is still running; these apply only to

@@ -13,15 +13,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
+import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from robot_routes.pipeline.conditions import condition_spec, load_grid, stage_list
+from robot_routes.pipeline.ppo_force import grid_job_complete
 from robot_routes.utils.device import project_python
 
 
@@ -33,14 +36,28 @@ class GridJob:
     requires: list[str] = field(default_factory=list)
 
 
-def job_completed(run_dir: Path) -> bool:
-    state_path = run_dir / "pipeline_state.json"
-    if (run_dir / "COMPLETED").exists():
-        return True
-    if not state_path.exists():
-        return False
-    state = json.loads(state_path.read_text())
-    return state.get("stages", {}).get("pipeline", {}).get("status") == "COMPLETED"
+def job_completed(job: GridJob, grid: dict, *, ppo_force: bool) -> bool:
+    spec = condition_spec(grid, job.name)
+    has_ppo = "ppo" in stage_list(spec)
+    return grid_job_complete(
+        job.run_dir,
+        ppo_force=ppo_force and has_ppo,
+        has_ppo_stage=has_ppo,
+    )
+
+
+def load_profile_flags(root: Path, profile: str) -> dict:
+    pipeline_cfg = yaml.safe_load((root / "configs/pipeline.yaml").read_text())
+    prof = dict(pipeline_cfg.get("profile", {}).get(profile, {}) or {})
+    handoff_day = root / "configs/handoff/day_overrides.yaml"
+    if profile == "day" and handoff_day.exists():
+        prof.update(yaml.safe_load(handoff_day.read_text()) or {})
+    handoff_full = root / "configs/handoff/full_overrides.yaml"
+    if profile == "full" and handoff_full.exists():
+        prof.update(yaml.safe_load(handoff_full.read_text()) or {})
+    if os.environ.get("PIPELINE_PPO_FORCE"):
+        prof["ppo_force"] = True
+    return prof
 
 
 def dep_satisfied(dep: str, seed: int, runs_root: Path) -> bool:
@@ -81,7 +98,17 @@ def build_jobs(grid: dict, runs_root: Path) -> list[GridJob]:
     return jobs
 
 
-def run_job(root: Path, runs_root: Path, profile: str, py: str, job: GridJob, device: str) -> int:
+def run_job(
+    root: Path,
+    runs_root: Path,
+    profile: str,
+    py: str,
+    job: GridJob,
+    device: str,
+    grid: dict,
+    *,
+    ppo_force: bool,
+) -> int:
     job.run_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         py,
@@ -92,6 +119,8 @@ def run_job(root: Path, runs_root: Path, profile: str, py: str, job: GridJob, de
         "--out", str(runs_root),
         "--device", device,
     ]
+    if ppo_force and "ppo" in stage_list(condition_spec(grid, job.name)):
+        cmd.append("--ppo-force")
     print(f"[grid] launching {job.name} seed {job.seed}: {' '.join(cmd)}", flush=True)
     return subprocess.run(cmd, cwd=root).returncode
 
@@ -108,6 +137,8 @@ def main() -> None:
     py = project_python(root)
     grid = load_grid(root, args.config)
     runs_root = Path(args.runs_root)
+    prof = load_profile_flags(root, args.profile)
+    ppo_force = bool(prof.get("ppo_force"))
 
     pending = build_jobs(grid, runs_root)
     dep_timeout_s = float(grid.get("dep_timeout_h", 48)) * 3600
@@ -129,12 +160,12 @@ def main() -> None:
 
         job = runnable[0]
         pending.remove(job)
-        if job_completed(job.run_dir):
+        if job_completed(job, grid, ppo_force=ppo_force):
             print(f"[grid] skip {job.name} seed {job.seed} (already COMPLETED)", flush=True)
             skipped += 1
             continue
 
-        code = run_job(root, runs_root, args.profile, py, job, args.device)
+        code = run_job(root, runs_root, args.profile, py, job, args.device, grid, ppo_force=ppo_force)
         if code == 0:
             completed += 1
         else:

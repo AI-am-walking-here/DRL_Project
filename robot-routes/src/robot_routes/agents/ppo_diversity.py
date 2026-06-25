@@ -85,14 +85,20 @@ class PPOTrainer:
         self.scenes = scenes
         self.device = device
         self.value = ValueNet(n_scenes=len(scenes)).to(device)
+        # Separate LRs: the policy is a pretrained asset (nudge gently); the value
+        # head is from scratch (learn fast). Single optimizer, two param groups.
         self.opt = torch.optim.AdamW(
-            list(policy.parameters()) + list(self.value.parameters()), lr=cfg.lr
+            [
+                {"params": list(policy.parameters()), "lr": cfg.policy_lr},
+                {"params": list(self.value.parameters()), "lr": cfg.value_lr},
+            ]
         )
         self.archives: dict[int, deque] = {
             i: deque(maxlen=cfg.archive_m) for i in range(len(scenes))
         }
         self.beta = cfg.beta
         self.beta_halvings = 0
+        self.env_steps = 0  # drives the value-warmup window
 
     def rollout_env(self, env: PandaReachEnv, scene_idx: int) -> RolloutBuffer:
         buf = RolloutBuffer()
@@ -116,16 +122,24 @@ class PPOTrainer:
             buf.dones.append(term or trunc)
             if term or trunc:
                 break
-        if info.get("success"):
+        success = bool(info.get("success"))
+        if ee_traj:
             tau = resample_path(np.array(ee_traj))
-            archive = self.archives[scene_idx]
-            if archive:
-                d_min = min(frechet(tau, t) for t in archive)
-                r_div = self.beta * min(max(d_min, 0.0), self.cfg.rdiv_cap)
-            else:
-                r_div = self.beta * self.cfg.rdiv_cap
-            buf.rewards[-1] += r_div
-            archive.append(tau)
+            min_dist = float(np.linalg.norm(np.array(ee_traj) - env._goal, axis=1).min())
+            quality = 1.0 if success else max(0.0, 1.0 - min_dist / self.cfg.div_quality_d0)
+            eligible = success or (
+                self.cfg.div_ungate and quality >= self.cfg.div_ungate_min_quality
+            )
+            if eligible:
+                archive = self.archives[scene_idx]
+                if archive:
+                    d_min = min(frechet(tau, t) for t in archive)
+                    r_div = self.beta * min(max(d_min, 0.0), self.cfg.rdiv_cap)
+                else:
+                    r_div = self.beta * self.cfg.rdiv_cap
+                buf.rewards[-1] += r_div * quality
+                if success or quality >= self.cfg.div_ungate_min_quality:
+                    archive.append(tau)
         return buf
 
     def train_step(self, buffers: list[RolloutBuffer]) -> dict[str, float]:
@@ -144,6 +158,7 @@ class PPOTrainer:
             adv_all.extend(adv)
             ret_all.extend(ret)
             scene_all.extend(buf.scene_idx)
+        self.env_steps += len(obs_all)
         obs_t = torch.as_tensor(np.array(obs_all), dtype=torch.float32, device=self.device)
         act_t = torch.as_tensor(np.array(act_all), dtype=torch.float32, device=self.device)
         lp_old_t = torch.as_tensor(lp_old, dtype=torch.float32, device=self.device)
@@ -167,11 +182,22 @@ class PPOTrainer:
             lp_a = policy_log_prob(self.anchor, obs_t[: len(sample_a)], sample_a)
         kl = (lp_s - lp_a).mean()
         ent = -lp_new.mean()
-        loss = (
-            policy_loss + 0.5 * value_loss - self.cfg.entropy_coef * ent + self.cfg.kl_anchor * kl
-        )
+        warmup = self.env_steps <= self.cfg.value_warmup_steps
+        if warmup:
+            # Freeze the policy until the value head gives trustworthy advantages.
+            loss = 0.5 * value_loss
+        else:
+            loss = (
+                policy_loss + 0.5 * value_loss - self.cfg.entropy_coef * ent
+                + self.cfg.kl_anchor * kl
+            )
         self.opt.zero_grad()
         loss.backward()
+        # Trust-region guard: skip the policy nudge whenever it would (or already does)
+        # sit past the KL budget — the value head still learns, the policy can't bolt.
+        if warmup or abs(float(kl.item())) > self.cfg.kl_stop:
+            for param in self.policy.parameters():
+                param.grad = None
         nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0)
         self.opt.step()
         return {
@@ -179,6 +205,7 @@ class PPOTrainer:
             "value_loss": float(value_loss.item()),
             "kl": float(kl.item()),
             "entropy": float(ent.item()),
+            "warmup": float(warmup),
         }
 
     def maybe_halve_beta(self, r_div_std: float, success_bonus: float = 10.0) -> None:

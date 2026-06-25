@@ -19,6 +19,7 @@ import torch
 from robot_routes.agents.bc_trainer import train_bc
 from robot_routes.agents.dagger_rac import collect_round
 from robot_routes.agents.policy import load_checkpoint
+from robot_routes.contracts import SceneSpec
 from robot_routes.data.scene_sets import load_scenes, scene_set_path
 from robot_routes.data.schema import merge_shards, write_shard
 from robot_routes.envs.panda_reach_env import PandaReachEnv
@@ -56,6 +57,22 @@ from robot_routes.utils.device import COLLECT_DEVICE, resolve_device
 from robot_routes.utils.seeding import seed_everything
 
 
+def dagger_retrain_merge(anchor_h5: Path, round_shard: Path, out_path: Path) -> None:
+    """Every retrain: original clean demos + this round only (anchored DAgger)."""
+    merge_shards([anchor_h5, round_shard], out_path)
+
+
+def make_val_scene_sampler(scenes: list[SceneSpec]):
+    """Sample fixed val scenes where the policy is most likely to almost-succeed."""
+
+    def _sample(_env: PandaReachEnv, _expert: ExpertOracle, rng, _level: int):
+        if not scenes:
+            return None
+        return scenes[int(rng.integers(len(scenes)))]
+
+    return _sample
+
+
 def collect_round_with_retry(
     env: PandaReachEnv,
     policy,
@@ -70,6 +87,7 @@ def collect_round_with_retry(
     profile: str = "full",
     run_dir: Path | None = None,
     progress_cb: Any = None,
+    sample_scene_fn: Any = None,
 ) -> tuple[Path, dict]:
     initial_rows, ep_map, start_b = load_dagger_partial(out, k)
     if start_b > 0:
@@ -91,6 +109,7 @@ def collect_round_with_retry(
             cfg,
             round_rng,
             delta_reroute=delta,
+            sample_scene_fn=sample_scene_fn,
             meta_out=meta,
             progress_cb=progress_cb,
             initial_rows=list(initial_rows) if attempt == 0 else None,
@@ -227,6 +246,16 @@ def main():
     policy = load_checkpoint(str(resume.policy_ckpt), policy_cfg).to(collect_device)
     policy.eval()
     val_scenes = load_scenes(root, "val_L0")[:20] if scene_set_path(root, "val_L0").exists() else []
+    collect_scenes = load_scenes(root, "val_L0")[:40] if scene_set_path(root, "val_L0").exists() else []
+    sample_scene_fn = make_val_scene_sampler(collect_scenes) if collect_scenes else None
+    seg_weights = cfg.weights or {
+        "full_demo": 2.5,
+        "dagger_label": 1.0,
+        "clean_rollout": 1.5,
+        "recovery": 0.3,
+        "correction": 0.5,
+    }
+    anchor_h5 = Path(args.bc_data)
     prev_sr = resume.prev_sr
     round_stats: list[float] = list(resume.round_stats)
     regress_drops: list[float] = list(resume.regress_drops)
@@ -267,12 +296,13 @@ def main():
                 args.profile,
                 run_dir,
                 progress_cb=_progress_cb,
+                sample_scene_fn=sample_scene_fn,
             ),
         )
         delta_shard = out / f"delta_d_{k}.h5"
         shutil.copy(shard, delta_shard)
         merged_path = out / f"merged_{k}.h5"
-        merge_shards([merged_base, shard], merged_path)
+        dagger_retrain_merge(anchor_h5, shard, merged_path)
         retrain_cfg = dataclasses.replace(bc_cfg, epochs=cfg.retrain_epochs)
         ckpt_dir = out / f"ckpt_{k}"
         write_stage_live(
@@ -294,6 +324,7 @@ def main():
                 ckpt_dir,
                 train_device,
                 rng,
+                segment_weights=seg_weights,
                 oom_tag_dir=run_dir,
             )
             policy.eval()
@@ -342,9 +373,10 @@ def main():
                     args.profile,
                     run_dir,
                     progress_cb=_progress_cb,
+                    sample_scene_fn=sample_scene_fn,
                 )
                 shutil.copy(shard, out / f"delta_d_{k}.h5")
-                merge_shards([merged_base, shard], merged_path)
+                dagger_retrain_merge(anchor_h5, shard, merged_path)
                 regressed = True
             else:
                 notify(run_dir, "G-REGRESS_flag", round=k, msg=rmsg)

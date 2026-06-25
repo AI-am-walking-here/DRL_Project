@@ -61,6 +61,7 @@ class PandaReachEnv(gym.Env):
         self._goal = np.zeros(3, dtype=np.float64)
         self._t = 0
         self._hold = 0
+        self._prev_dist = 0.0  # for potential-based progress reward
         self._rng = np.random.default_rng(0)
         self._renderer: mujoco.Renderer | None = None
 
@@ -167,6 +168,8 @@ class PandaReachEnv(gym.Env):
         self._apply_scene(scene)
         self._t = 0
         self._hold = 0
+        ee = self.data.site_xpos[self._ee_sid]
+        self._prev_dist = float(np.linalg.norm(ee - self._goal))
         obs = self._encode()
         info = self._info()
         return obs, info
@@ -204,16 +207,28 @@ class PandaReachEnv(gym.Env):
         collision = self._contact_violation()
         clearance = self.min_clearance()
         ee = self.data.site_xpos[self._ee_sid].copy()
-        at_goal = float(np.linalg.norm(ee - self._goal)) < self.cfg.success_tol_m
+        dist = float(np.linalg.norm(ee - self._goal))
+        at_goal = dist < self.cfg.success_tol_m
         self._hold = self._hold + 1 if at_goal else 0
         success = self._hold >= self.cfg.success_hold_steps
         terminated = bool(collision or success)
         truncated = bool(self._t >= self.cfg.horizon and not terminated)
+        # Archery bonus: 0 at the success_tol_m rim, 1 at/inside bullseye_tol_m,
+        # squared so points climb steeply toward the center. Paid only on success.
+        span = max(self.cfg.success_tol_m - self.cfg.bullseye_tol_m, 1e-6)
+        prox = min(max((self.cfg.success_tol_m - dist) / span, 0.0), 1.0)
+        bullseye = self.cfg.r_bullseye * prox * prox
+        # Progress reward telescopes to w_progress*(dist_start - dist_end): a clean,
+        # path-independent gradient toward the goal (oscillating to farm it nets zero).
+        progress = self._prev_dist - dist
+        self._prev_dist = dist
         reward = float(
-            -0.1 * np.linalg.norm(ee - self._goal)
-            + 10.0 * success
-            - 25.0 * collision
-            - 1e-3 * float(a @ a)
+            self.cfg.w_progress * progress
+            - self.cfg.w_time
+            - self.cfg.w_collision * collision
+            - self.cfg.w_action * float(a @ a)
+            + (self.cfg.r_success + bullseye) * success
+            - self.cfg.r_timeout * truncated
         )
         info = {
             "collision": collision,

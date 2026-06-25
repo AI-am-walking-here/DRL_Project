@@ -43,6 +43,7 @@ def train_bc(
     device: torch.device,
     rng: np.random.Generator,
     *,
+    segment_weights: dict[str, float] | None = None,
     oom_tag_dir: Path | None = None,
     min_batch: int = DEFAULT_MIN_BATCH,
 ) -> nn.Module:
@@ -51,7 +52,14 @@ def train_bc(
     for attempt in range(4):
         try:
             return _train_bc_once(
-                h5_path, cfg, policy_cfg, out_dir, device, rng, batch_size=batch
+                h5_path,
+                cfg,
+                policy_cfg,
+                out_dir,
+                device,
+                rng,
+                batch_size=batch,
+                segment_weights=segment_weights,
             )
         except Exception as e:
             if not is_cuda_oom(e) or batch <= min_batch:
@@ -76,13 +84,14 @@ def _train_bc_once(
     rng: np.random.Generator,
     *,
     batch_size: int,
+    segment_weights: dict[str, float] | None = None,
 ) -> nn.Module:
     cfg = replace(cfg, batch=batch_size)
     ds = TransitionDataset(h5_path, val_frac=cfg.val_frac, rng=rng)
     policy = build_policy(policy_cfg).to(device)
     policy.obs_mean.copy_(torch.as_tensor(ds.obs[ds.train_mask].mean(0)))
     policy.obs_std.copy_(torch.as_tensor(ds.obs[ds.train_mask].std(0) + 1e-6))
-    weights_cfg = {
+    weights_cfg = segment_weights or {
         "full_demo": 1.0,
         "dagger_label": 1.0,
         "clean_rollout": 0.5,

@@ -54,8 +54,9 @@ check-wp:
 
 # ---- pipeline -------------------------------------------------------------
 # Single condition end-to-end (e.g. make pipeline CONDITION=full PROFILE=full).
+# Re-run Stage 4 on a finished run that skipped G-PPO: add PPO_FORCE=1.
 pipeline:
-	PIPELINE_SKIP_PREREG=1 $(PYTHON) scripts/run_pipeline.py --seed $(SEED) --condition $(CONDITION) --profile $(PROFILE) --out $(or $(OUT),runs/pipeline)
+	PIPELINE_SKIP_PREREG=1 $(PYTHON) scripts/run_pipeline.py --seed $(SEED) --condition $(CONDITION) --profile $(PROFILE) --out $(or $(OUT),runs/pipeline) $(if $(PPO_FORCE),--ppo-force,)
 
 reproduce:
 	$(PYTHON) scripts/run_pipeline.py --seed $(SEED) --condition $(CONDITION) --profile $(PROFILE) --out $(or $(OUT),runs/reproduce)

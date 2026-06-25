@@ -2,8 +2,19 @@ ctrl_hz: 20
 n_substeps: 25
 horizon: 300
 action_clip: 0.05
-success_tol_m: 0.05
+# Archery target: on-target at success_tol_m, bullseye (full bonus) at bullseye_tol_m.
+success_tol_m: 0.12
 success_hold_steps: 5
+bullseye_tol_m: 0.05
+# Reward weights (PPO only). Stalling (r_timeout) costs much more than a hit (w_collision).
+# w_progress is potential-based (reward per metre closed) — a clean gradient, no hovering.
+w_progress: 10.0
+w_time: 0.02
+w_collision: 15.0
+w_action: 0.001
+r_success: 10.0
+r_bullseye: 10.0
+r_timeout: 25.0
 jlimit_margin_rad: 0.02
 max_obstacles: 8
 obs_dim: 79

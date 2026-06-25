@@ -25,6 +25,7 @@ from robot_routes.pipeline.dither import run_dither_gate
 from robot_routes.pipeline.g_ppo import evaluate_g_ppo, resolve_compare_evals
 from robot_routes.pipeline.gates import eval_success_on_scenes, gate_bc
 from robot_routes.pipeline.notify import notify
+from robot_routes.pipeline.ppo_force import arm_ppo_force
 from robot_routes.pipeline.progress import PipelineProgress, ordered_stages
 from robot_routes.pipeline.setup_checks import assert_delta_invariant, run_setup_checks
 from robot_routes.pipeline.stage_resume import eval_artifact_valid, eval_resume_meta
@@ -461,6 +462,11 @@ def main() -> None:
         action="store_true",
         help="Re-run stages even when stamps exist; pass through to stage scripts",
     )
+    p.add_argument(
+        "--ppo-force",
+        action="store_true",
+        help="Always run Stage 4 PPO (bypass G-PPO); re-arm if a prior run skipped PPO",
+    )
     args = p.parse_args()
     profile = args.profile
     force = args.force_restart
@@ -495,6 +501,8 @@ def main() -> None:
     handoff_full = root / "configs/handoff/full_overrides.yaml"
     if profile == "full" and handoff_full.exists():
         prof.update(yaml.safe_load(handoff_full.read_text()) or {})
+    if args.ppo_force or os.environ.get("PIPELINE_PPO_FORCE"):
+        prof["ppo_force"] = True
     disk_min = pipeline_cfg.get("disk_min_gb", 50)
     watchdog_min = pipeline_cfg.get("watchdog_min", 30)
 
@@ -868,6 +876,11 @@ def main() -> None:
         )
 
     run_ppo = "ppo" in stages_allowed
+    if run_ppo and prof.get("ppo_force"):
+        if arm_ppo_force(run_dir):
+            state = PipelineState(run_dir)
+            sys.stdout.write("ppo_force: re-armed Stage 4 (cleared prior G-PPO skip)\n")
+            sys.stdout.flush()
     if run_ppo:
         if state.status("ppo") == "WAITING_DEP":
             state.set_status("ppo", "PENDING")
